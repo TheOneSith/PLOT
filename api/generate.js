@@ -30,20 +30,16 @@ export function buildMessages({ text, mode, detail }) {
   ];
 }
 
-async function readJson(req) {
-  if (req.body && typeof req.body === 'object') return req.body;
-  let raw = '';
-  for await (const chunk of req) {
-    raw += chunk;
-    if (raw.length > 100000) throw Object.assign(new Error('Richiesta troppo grande.'), { status: 413 });
-  }
-  try { return JSON.parse(raw || '{}'); }
+async function readJson(request) {
+  const contentLength = Number(request.headers.get('content-length') || 0);
+  if (contentLength > 100000) throw Object.assign(new Error('Richiesta troppo grande.'), { status: 413 });
+  try { return await request.json(); }
   catch { throw Object.assign(new Error('Richiesta non valida.'), { status: 400 }); }
 }
 
 const localLimits = new Map();
-async function isRateLimited(req) {
-  const rawIp = String(req.headers?.['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown').split(',')[0].trim();
+async function isRateLimited(request) {
+  const rawIp = String(request.headers.get('x-forwarded-for') || 'unknown').split(',')[0].trim();
   const id = createHash('sha256').update(`${process.env.RATE_LIMIT_SALT || 'local'}:${rawIp}`).digest('hex').slice(0, 24);
   const windowId = Math.floor(Date.now() / 3600000);
   const redisUrl = process.env.UPSTASH_REDIS_REST_URL;
@@ -60,13 +56,16 @@ async function isRateLimited(req) {
   return count > 15;
 }
 
-export default async function handler(req, res) {
-  res.setHeader('Cache-Control', 'no-store');
-  res.setHeader('Content-Type', 'application/json; charset=utf-8');
-  if (req.method !== 'POST') return res.status?.(405).json?.({ error: 'Metodo non consentito.' }) || (res.statusCode = 405, res.end(JSON.stringify({ error: 'Metodo non consentito.' })));
+function json(body, status = 200) {
+  return Response.json(body, { status, headers: { 'Cache-Control': 'no-store' } });
+}
+
+export async function generate(request) {
+  if (request.method === 'GET') return json({ ok: true, configured: Boolean(process.env.OPENROUTER_API_KEY && process.env.OPENROUTER_MODEL) });
+  if (request.method !== 'POST') return json({ error: 'Metodo non consentito.' }, 405);
   try {
-    if (await isRateLimited(req)) throw Object.assign(new Error('Hai raggiunto il limite temporaneo. Riprova tra poco.'), { status: 429 });
-    const input = validateInput(await readJson(req));
+    if (await isRateLimited(request)) throw Object.assign(new Error('Hai raggiunto il limite temporaneo. Riprova tra poco.'), { status: 429 });
+    const input = validateInput(await readJson(request));
     const apiKey = process.env.OPENROUTER_API_KEY;
     const model = process.env[`OPENROUTER_MODEL_${input.mode.toUpperCase()}`] || process.env.OPENROUTER_MODEL;
     if (!apiKey || !model) throw Object.assign(new Error('Il servizio AI non è ancora configurato.'), { status: 503, public: true });
@@ -89,14 +88,14 @@ export default async function handler(req, res) {
     const content = data?.choices?.[0]?.message?.content;
     if (typeof content !== 'string' || !content.trim()) throw Object.assign(new Error('La risposta AI era vuota. Riprova.'), { status: 502, public: true });
     const payload = { content: content.trim(), format: MODES[input.mode].label, requestId: randomUUID() };
-    if (res.status) return res.status(200).json(payload);
-    res.statusCode = 200; res.end(JSON.stringify(payload));
+    return json(payload);
   } catch (error) {
     const status = error?.name === 'AbortError' ? 504 : Number(error?.status) || 500;
     const message = status >= 500 && !error?.public ? 'Qualcosa non ha funzionato. Riprova tra poco.' : error.message;
     if (status >= 500) console.error('Generate error', error?.name || 'Error');
-    if (res.status) return res.status(status).json({ error: message });
-    res.statusCode = status; res.end(JSON.stringify({ error: message }));
+    return json({ error: message }, status);
   }
 }
+
+export default { fetch: generate };
 
