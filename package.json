@@ -1,2 +1,2 @@
-{"name":"appunto","version":"1.0.0","private":true,"type":"module","engines":{"node":">=22"},"scripts":{"dev":"node --env-file-if-exists=.env.local server.mjs","test":"node --test","build":"node scripts/build.mjs"}}
+{"name":"appunto","version":"1.0.1","private":true,"type":"module","engines":{"node":"22.x"},"scripts":{"dev":"node --env-file-if-exists=.env.local server.mjs","test":"node --test","build":"node scripts/build.mjs"}}
 
