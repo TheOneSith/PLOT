@@ -29,7 +29,7 @@ Apri `http://localhost:3000`. Senza le variabili OpenRouter l'interfaccia funzio
 
 ## Deploy su Vercel
 
-Importa il repository GitHub in Vercel, aggiungi le variabili d'ambiente indicate sopra e avvia il deploy. `vercel.json` contiene già build, cartella pubblica e funzione serverless. Per installarla sul telefono, apri il sito nel browser e scegli **Aggiungi alla schermata Home**.
+Importa il repository GitHub in Vercel, scegli **Other** come Framework Preset e lascia vuoti Build Command e Output Directory. Vercel pubblica automaticamente la cartella `public` e distribuisce `api/generate.js` come funzione serverless. Aggiungi le variabili d'ambiente indicate sopra e avvia il deploy. Per installarla sul telefono, apri il sito nel browser e scegli **Aggiungi alla schermata Home**.
 
 ## Privacy
 
