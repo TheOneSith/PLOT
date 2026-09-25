@@ -60,6 +60,20 @@ function json(body, status = 200) {
   return Response.json(body, { status, headers: { 'Cache-Control': 'no-store' } });
 }
 
+export function describeOpenRouterError(status, payload = {}) {
+  const code = payload?.error?.code || payload?.code || 'unknown';
+  const detail = String(payload?.error?.message || payload?.message || '').slice(0, 300);
+  const messages = {
+    400: 'OpenRouter ha rifiutato la configurazione. Controlla che OPENROUTER_MODEL sia uno slug valido come “provider/modello” oppure “@preset/slug”.',
+    401: 'La chiave OpenRouter non è valida. Controlla OPENROUTER_API_KEY su Vercel.',
+    402: 'Il credito OpenRouter è insufficiente per il modello selezionato.',
+    403: 'La chiave OpenRouter non può utilizzare il modello selezionato.',
+    404: 'Il modello o preset configurato su OpenRouter non esiste.',
+    429: 'OpenRouter ha raggiunto un limite di richieste. Attendi oppure usa un modello con maggiore disponibilità.'
+  };
+  return { code, detail, message: messages[status] || 'Il servizio AI non è disponibile in questo momento.' };
+}
+
 export async function generate(request) {
   if (request.method === 'GET') return json({ ok: true, configured: Boolean(process.env.OPENROUTER_API_KEY && process.env.OPENROUTER_MODEL) });
   if (request.method !== 'POST') return json({ error: 'Metodo non consentito.' }, 405);
@@ -81,8 +95,12 @@ export async function generate(request) {
     } finally { clearTimeout(timeout); }
     if (!upstream.ok) {
       const providerId = upstream.headers.get('x-request-id');
-      console.error('OpenRouter error', upstream.status, providerId || 'no-id');
-      throw Object.assign(new Error(upstream.status === 429 ? 'Il servizio AI è molto richiesto. Riprova tra poco.' : 'Il servizio AI non è disponibile in questo momento.'), { status: upstream.status === 429 ? 429 : 502, public: true });
+      let providerPayload = {};
+      try { providerPayload = await upstream.json(); } catch {}
+      const described = describeOpenRouterError(upstream.status, providerPayload);
+      console.error('OpenRouter error', upstream.status, described.code, providerId || 'no-id', described.detail || 'no-detail');
+      const responseStatus = [400, 401, 402, 403, 404, 429].includes(upstream.status) ? upstream.status : 502;
+      throw Object.assign(new Error(described.message), { status: responseStatus, public: true });
     }
     const data = await upstream.json();
     const content = data?.choices?.[0]?.message?.content;
