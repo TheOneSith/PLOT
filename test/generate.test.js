@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { validateInput, buildMessages, generate } from '../api/generate.js';
+import { validateInput, buildMessages, describeOpenRouterError, generate } from '../api/generate.js';
 
 test('accetta un input valido e crea istruzioni coerenti', () => {
   const input = validateInput({ text: 'Una trascrizione sufficientemente lunga per essere elaborata correttamente.', mode: 'mindmap', detail: 'balanced' });
@@ -19,5 +19,11 @@ test('espone una diagnostica senza invocare OpenRouter', async () => {
   const response = await generate(new Request('https://example.test/api/generate'));
   assert.equal(response.status, 200);
   assert.equal((await response.json()).ok, true);
+});
+
+test('traduce gli errori OpenRouter senza esporre dati sensibili', () => {
+  const result = describeOpenRouterError(400, { error: { code: 'bad_model', message: 'Invalid model slug' } });
+  assert.equal(result.code, 'bad_model');
+  assert.match(result.message, /OPENROUTER_MODEL/);
 });
 
